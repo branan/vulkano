@@ -7,6 +7,7 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+use std::cell::UnsafeCell;
 use std::error;
 use std::fmt;
 use std::mem;
@@ -32,16 +33,26 @@ use VulkanObject;
 use check_errors;
 use vk;
 
+
+/// Used as a way to opaquely track a window object
+pub trait WindowAbstract {}
+
 /// Represents a surface on the screen.
 ///
 /// Creating a `Surface` is platform-specific.
 pub struct Surface {
+    _window: UnsafeCell<Option<Arc<WindowAbstract + Send + Sync>>>,
     instance: Arc<Instance>,
     surface: vk::SurfaceKHR,
 
     // If true, a swapchain has been associated to this surface, and that any new swapchain
     // creation should be forbidden.
     has_swapchain: AtomicBool,
+}
+
+unsafe impl Send for Surface {
+}
+unsafe impl Sync for Surface {
 }
 
 impl Surface {
@@ -51,6 +62,7 @@ impl Surface {
     ///
     pub unsafe fn from_raw_surface(instance: Arc<Instance>, surface: vk::SurfaceKHR) -> Surface {
         Surface {
+            _window: UnsafeCell::new(None),
             instance: instance,
             surface: surface,
             has_swapchain: AtomicBool::new(false),
@@ -110,6 +122,7 @@ impl Surface {
         };
 
         Ok(Arc::new(Surface {
+                        _window: UnsafeCell::new(None),
                         instance: instance.clone(),
                         surface: surface,
                         has_swapchain: AtomicBool::new(false),
@@ -150,6 +163,7 @@ impl Surface {
         };
 
         Ok(Arc::new(Surface {
+                        _window: UnsafeCell::new(None),
                         instance: instance.clone(),
                         surface: surface,
                         has_swapchain: AtomicBool::new(false),
@@ -190,6 +204,7 @@ impl Surface {
         };
 
         Ok(Arc::new(Surface {
+                        _window: UnsafeCell::new(None),
                         instance: instance.clone(),
                         surface: surface,
                         has_swapchain: AtomicBool::new(false),
@@ -230,6 +245,7 @@ impl Surface {
         };
 
         Ok(Arc::new(Surface {
+                        _window: UnsafeCell::new(None),
                         instance: instance.clone(),
                         surface: surface,
                         has_swapchain: AtomicBool::new(false),
@@ -271,6 +287,7 @@ impl Surface {
         };
 
         Ok(Arc::new(Surface {
+                        _window: UnsafeCell::new(None),
                         instance: instance.clone(),
                         surface: surface,
                         has_swapchain: AtomicBool::new(false),
@@ -312,6 +329,7 @@ impl Surface {
         };
 
         Ok(Arc::new(Surface {
+                        _window: UnsafeCell::new(None),
                         instance: instance.clone(),
                         surface: surface,
                         has_swapchain: AtomicBool::new(false),
@@ -349,6 +367,7 @@ impl Surface {
         };
 
         Ok(Arc::new(Surface {
+                        _window: UnsafeCell::new(None),
                         instance: instance.clone(),
                         surface: surface,
                         has_swapchain: AtomicBool::new(false),
@@ -387,6 +406,7 @@ impl Surface {
         };
 
         Ok(Arc::new(Surface {
+                        _window: UnsafeCell::new(None),
                         instance: instance.clone(),
                         surface: surface,
                         has_swapchain: AtomicBool::new(false),
@@ -425,6 +445,7 @@ impl Surface {
         };
 
         Ok(Arc::new(Surface {
+                        _window: UnsafeCell::new(None),
                         instance: instance.clone(),
                         surface: surface,
                         has_swapchain: AtomicBool::new(false),
@@ -462,6 +483,7 @@ impl Surface {
         };
 
         Ok(Arc::new(Surface {
+                        _window: UnsafeCell::new(None),
                         instance: instance.clone(),
                         surface: surface,
                         has_swapchain: AtomicBool::new(false),
@@ -572,6 +594,11 @@ impl Surface {
                 present_modes: modes,
             })
         }
+    }
+
+    /// Sets the window which this surface will reference
+    pub unsafe fn set_window(&self, win: Arc<WindowAbstract + Send + Sync>) {
+        *self._window.get() = Some(win);
     }
 
     /// Returns the instance this surface was created with.

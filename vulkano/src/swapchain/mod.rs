@@ -296,6 +296,7 @@ pub use self::present_region::RectangleLayer;
 pub use self::surface::CapabilitiesError;
 pub use self::surface::Surface;
 pub use self::surface::SurfaceCreationError;
+pub use self::surface::WindowAbstract;
 pub use self::swapchain::AcquireError;
 pub use self::swapchain::AcquiredImage;
 pub use self::swapchain::PresentFuture;

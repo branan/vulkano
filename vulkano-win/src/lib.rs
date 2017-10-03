@@ -10,6 +10,7 @@ extern crate metal_rs as metal;
 
 use std::error;
 use std::fmt;
+use std::ops::Deref;
 #[cfg(target_os = "windows")]
 use std::ptr;
 use std::sync::Arc;
@@ -18,6 +19,7 @@ use vulkano::instance::Instance;
 use vulkano::instance::InstanceExtensions;
 use vulkano::swapchain::Surface;
 use vulkano::swapchain::SurfaceCreationError;
+use vulkano::swapchain::WindowAbstract;
 use winit::{EventsLoop, WindowBuilder};
 use winit::CreationError as WindowCreationError;
 
@@ -61,8 +63,12 @@ pub trait VkSurfaceBuild {
 impl VkSurfaceBuild for WindowBuilder {
     fn build_vk_surface(self, events_loop: &EventsLoop, instance: Arc<Instance>)
                         -> Result<Window, CreationError> {
-        let window = self.build(events_loop)?;
-        let surface = unsafe { winit_to_surface(instance, &window) }?;
+        let underlying_window = self.build(events_loop)?;
+        let surface = unsafe { winit_to_surface(instance, &underlying_window) }?;
+        let window = Arc::new(WinitWindow(underlying_window));
+        unsafe {
+            surface.set_window(window.clone());
+        }
 
         Ok(Window {
                window: window,
@@ -71,8 +77,21 @@ impl VkSurfaceBuild for WindowBuilder {
     }
 }
 
+struct WinitWindow(winit::Window);
+
+impl WindowAbstract for WinitWindow {
+}
+
+impl Deref for WinitWindow {
+    type Target = winit::Window;
+
+    fn deref(&self) -> &winit::Window {
+        &self.0
+    }
+}
+
 pub struct Window {
-    window: winit::Window,
+    window: Arc<WinitWindow>,
     surface: Arc<Surface>,
 }
 
