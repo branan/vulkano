@@ -47,8 +47,10 @@
 //! Trying to use one of these functions without enabling the proper extension will result in an
 //! error.
 //!
-//! **Note that the `Surface` object is unsafe**. It is your responsibility to keep the window
-//! alive for at least as long as the surface exists.
+//! **Note that the `Surface` object is potentially unsafe**. It is your responsibility to
+//! keep the window alive for at least as long as the surface exists. If you implement the
+//! `WindowAbstract` trait for your window struct, `Surface` can keep a reference to that object,
+//! which will track this for you.
 //!
 //! ### Example
 //!
@@ -75,7 +77,7 @@
 //! let window = build_window();        // Third-party function, not provided by vulkano
 //! let _surface = unsafe {
 //!     let hinstance: *const () = ptr::null();     // Windows-specific object
-//!     Surface::from_hwnd(instance.clone(), hinstance, window).unwrap()
+//!     Surface::from_hwnd(instance.clone(), hinstance, window, None).unwrap()
 //! };
 //! ```
 //!
@@ -296,6 +298,7 @@ pub use self::present_region::RectangleLayer;
 pub use self::surface::CapabilitiesError;
 pub use self::surface::Surface;
 pub use self::surface::SurfaceCreationError;
+pub use self::surface::WindowAbstract;
 pub use self::swapchain::AcquireError;
 pub use self::swapchain::AcquiredImage;
 pub use self::swapchain::PresentFuture;

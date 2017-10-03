@@ -32,10 +32,19 @@ use VulkanObject;
 use check_errors;
 use vk;
 
+/// Used as an opaque handle to a window object
+///
+/// Implementing this trait on your window type will allow a `Surface`
+/// to keep an `Arc` to your window. This can ensure your window
+/// outlives the `Surface`, at the cost of some slight overhead in
+/// reference counting and heap allocation.
+pub trait WindowAbstract {}
+
 /// Represents a surface on the screen.
 ///
 /// Creating a `Surface` is platform-specific.
 pub struct Surface {
+    _window: Option<Arc<WindowAbstract + Send + Sync>>,
     instance: Arc<Instance>,
     surface: vk::SurfaceKHR,
 
@@ -49,8 +58,11 @@ impl Surface {
     ///
     /// Be careful when using it
     ///
-    pub unsafe fn from_raw_surface(instance: Arc<Instance>, surface: vk::SurfaceKHR) -> Surface {
+    pub unsafe fn from_raw_surface(instance: Arc<Instance>, surface: vk::SurfaceKHR,
+                                   win: Option<Arc<WindowAbstract + Send + Sync>>)
+                                   -> Surface {
         Surface {
+            _window: win,
             instance: instance,
             surface: surface,
             has_swapchain: AtomicBool::new(false),
@@ -109,7 +121,10 @@ impl Surface {
             output
         };
 
+        // TODO: What "window" should we reference here? Should we just implement
+        // WindowAbstract for the Display, and track it?
         Ok(Arc::new(Surface {
+                        _window: None,
                         instance: instance.clone(),
                         surface: surface,
                         has_swapchain: AtomicBool::new(false),
@@ -123,8 +138,10 @@ impl Surface {
     /// # Safety
     ///
     /// The caller must ensure that the `hinstance` and the `hwnd` are both correct and stay
-    /// alive for the entire lifetime of the surface.
-    pub unsafe fn from_hwnd<T, U>(instance: Arc<Instance>, hinstance: *const T, hwnd: *const U)
+    /// alive for the entire lifetime of the surface. The `win` parameter can be used to ensure this.
+
+    pub unsafe fn from_hwnd<T, U>(instance: Arc<Instance>, hinstance: *const T, hwnd: *const U,
+                                  win: Option<Arc<WindowAbstract + Send + Sync>>)
                                   -> Result<Arc<Surface>, SurfaceCreationError> {
         let vk = instance.pointers();
 
@@ -150,6 +167,7 @@ impl Surface {
         };
 
         Ok(Arc::new(Surface {
+                        _window: win,
                         instance: instance.clone(),
                         surface: surface,
                         has_swapchain: AtomicBool::new(false),
@@ -163,8 +181,9 @@ impl Surface {
     /// # Safety
     ///
     /// The caller must ensure that the `connection` and the `window` are both correct and stay
-    /// alive for the entire lifetime of the surface.
-    pub unsafe fn from_xcb<C>(instance: Arc<Instance>, connection: *const C, window: u32)
+    /// alive for the entire lifetime of the surface. The `win` parameter can be used to ensure this.
+    pub unsafe fn from_xcb<C>(instance: Arc<Instance>, connection: *const C, window: u32,
+                              win: Option<Arc<WindowAbstract + Send + Sync>>)
                               -> Result<Arc<Surface>, SurfaceCreationError> {
         let vk = instance.pointers();
 
@@ -190,6 +209,7 @@ impl Surface {
         };
 
         Ok(Arc::new(Surface {
+                        _window: win,
                         instance: instance.clone(),
                         surface: surface,
                         has_swapchain: AtomicBool::new(false),
@@ -203,8 +223,9 @@ impl Surface {
     /// # Safety
     ///
     /// The caller must ensure that the `display` and the `window` are both correct and stay
-    /// alive for the entire lifetime of the surface.
-    pub unsafe fn from_xlib<D>(instance: Arc<Instance>, display: *const D, window: c_ulong)
+    /// alive for the entire lifetime of the surface. The `win` parameter can be used to ensure this.
+    pub unsafe fn from_xlib<D>(instance: Arc<Instance>, display: *const D, window: c_ulong,
+                               win: Option<Arc<WindowAbstract + Send + Sync>>)
                                -> Result<Arc<Surface>, SurfaceCreationError> {
         let vk = instance.pointers();
 
@@ -230,6 +251,7 @@ impl Surface {
         };
 
         Ok(Arc::new(Surface {
+                        _window: win,
                         instance: instance.clone(),
                         surface: surface,
                         has_swapchain: AtomicBool::new(false),
@@ -243,9 +265,10 @@ impl Surface {
     /// # Safety
     ///
     /// The caller must ensure that the `display` and the `surface` are both correct and stay
-    /// alive for the entire lifetime of the surface.
+    /// alive for the entire lifetime of the surface. The `win` parameter can be used to ensure this.
     pub unsafe fn from_wayland<D, S>(instance: Arc<Instance>, display: *const D,
-                                     surface: *const S)
+                                     surface: *const S,
+                                     win: Option<Arc<WindowAbstract + Send + Sync>>)
                                      -> Result<Arc<Surface>, SurfaceCreationError> {
         let vk = instance.pointers();
 
@@ -271,6 +294,7 @@ impl Surface {
         };
 
         Ok(Arc::new(Surface {
+                        _window: win,
                         instance: instance.clone(),
                         surface: surface,
                         has_swapchain: AtomicBool::new(false),
@@ -285,8 +309,10 @@ impl Surface {
     /// # Safety
     ///
     /// The caller must ensure that the `connection` and the `surface` are both correct and stay
-    /// alive for the entire lifetime of the surface.
-    pub unsafe fn from_mir<C, S>(instance: Arc<Instance>, connection: *const C, surface: *const S)
+    /// alive for the entire lifetime of the surface. The `win` parameter can be used to ensure this.
+    pub unsafe fn from_mir<C, S>(instance: Arc<Instance>, connection: *const C,
+                                 surface: *const S,
+                                 win: Option<Arc<WindowAbstract + Send + Sync>>)
                                  -> Result<Arc<Surface>, SurfaceCreationError> {
         let vk = instance.pointers();
 
@@ -312,6 +338,7 @@ impl Surface {
         };
 
         Ok(Arc::new(Surface {
+                        _window: win,
                         instance: instance.clone(),
                         surface: surface,
                         has_swapchain: AtomicBool::new(false),
@@ -323,8 +350,9 @@ impl Surface {
     /// # Safety
     ///
     /// The caller must ensure that the `window` is correct and stays alive for the entire
-    /// lifetime of the surface.
-    pub unsafe fn from_anativewindow<T>(instance: Arc<Instance>, window: *const T)
+    /// lifetime of the surface. The `win` parameter can be used to ensure this.
+    pub unsafe fn from_anativewindow<T>(instance: Arc<Instance>, window: *const T,
+                                        win: Option<Arc<WindowAbstract + Send + Sync>>)
                                         -> Result<Arc<Surface>, SurfaceCreationError> {
         let vk = instance.pointers();
 
@@ -349,6 +377,7 @@ impl Surface {
         };
 
         Ok(Arc::new(Surface {
+                        _window: win,
                         instance: instance.clone(),
                         surface: surface,
                         has_swapchain: AtomicBool::new(false),
@@ -360,9 +389,10 @@ impl Surface {
     /// # Safety
     ///
     /// - The caller must ensure that the `view` is correct and stays alive for the entire
-    ///   lifetime of the surface.
+    ///   lifetime of the surface. The win parameter can be used to ensure this.
     /// - The `UIView` must be backed by a `CALayer` instance of type `CAMetalLayer`.
-    pub unsafe fn from_ios_moltenvk<T>(instance: Arc<Instance>, view: *const T)
+    pub unsafe fn from_ios_moltenvk<T>(instance: Arc<Instance>, view: *const T,
+                                       win: Option<Arc<WindowAbstract + Send + Sync>>)
                                        -> Result<Arc<Surface>, SurfaceCreationError> {
         let vk = instance.pointers();
 
@@ -387,6 +417,7 @@ impl Surface {
         };
 
         Ok(Arc::new(Surface {
+                        _window: win,
                         instance: instance.clone(),
                         surface: surface,
                         has_swapchain: AtomicBool::new(false),
@@ -398,9 +429,10 @@ impl Surface {
     /// # Safety
     ///
     /// - The caller must ensure that the `view` is correct and stays alive for the entire
-    ///   lifetime of the surface.
+    ///   lifetime of the surface. The `win` parameter can be used to ensure this.
     /// - The `NSView` must be backed by a `CALayer` instance of type `CAMetalLayer`.
-    pub unsafe fn from_macos_moltenvk<T>(instance: Arc<Instance>, view: *const T)
+    pub unsafe fn from_macos_moltenvk<T>(instance: Arc<Instance>, view: *const T,
+                                         win: Option<Arc<WindowAbstract + Send + Sync>>)
                                          -> Result<Arc<Surface>, SurfaceCreationError> {
         let vk = instance.pointers();
 
@@ -425,6 +457,7 @@ impl Surface {
         };
 
         Ok(Arc::new(Surface {
+                        _window: win,
                         instance: instance.clone(),
                         surface: surface,
                         has_swapchain: AtomicBool::new(false),
@@ -436,8 +469,9 @@ impl Surface {
     /// # Safety
     ///
     /// The caller must ensure that the `window` is correct and stays alive for the entire
-    /// lifetime of the surface.
-    pub unsafe fn from_vi_surface<T>(instance: Arc<Instance>, window: *const T)
+    /// lifetime of the surface. The `win` parameter can be used to ensure this.
+    pub unsafe fn from_vi_surface<T>(instance: Arc<Instance>, window: *const T,
+                                     win: Option<Arc<WindowAbstract + Send + Sync>>)
                                      -> Result<Arc<Surface>, SurfaceCreationError> {
         let vk = instance.pointers();
 
@@ -462,6 +496,7 @@ impl Surface {
         };
 
         Ok(Arc::new(Surface {
+                        _window: win,
                         instance: instance.clone(),
                         surface: surface,
                         has_swapchain: AtomicBool::new(false),
@@ -735,7 +770,7 @@ mod tests {
     #[test]
     fn khr_win32_surface_ext_missing() {
         let instance = instance!();
-        match unsafe { Surface::from_hwnd(instance, ptr::null::<u8>(), ptr::null::<u8>()) } {
+        match unsafe { Surface::from_hwnd(instance, ptr::null::<u8>(), ptr::null::<u8>(), None) } {
             Err(SurfaceCreationError::MissingExtension { .. }) => (),
             _ => panic!(),
         }
@@ -744,7 +779,7 @@ mod tests {
     #[test]
     fn khr_xcb_surface_ext_missing() {
         let instance = instance!();
-        match unsafe { Surface::from_xcb(instance, ptr::null::<u8>(), 0) } {
+        match unsafe { Surface::from_xcb(instance, ptr::null::<u8>(), 0, None) } {
             Err(SurfaceCreationError::MissingExtension { .. }) => (),
             _ => panic!(),
         }
@@ -753,7 +788,7 @@ mod tests {
     #[test]
     fn khr_xlib_surface_ext_missing() {
         let instance = instance!();
-        match unsafe { Surface::from_xlib(instance, ptr::null::<u8>(), 0) } {
+        match unsafe { Surface::from_xlib(instance, ptr::null::<u8>(), 0, None) } {
             Err(SurfaceCreationError::MissingExtension { .. }) => (),
             _ => panic!(),
         }
@@ -762,7 +797,9 @@ mod tests {
     #[test]
     fn khr_wayland_surface_ext_missing() {
         let instance = instance!();
-        match unsafe { Surface::from_wayland(instance, ptr::null::<u8>(), ptr::null::<u8>()) } {
+        match unsafe {
+            Surface::from_wayland(instance, ptr::null::<u8>(), ptr::null::<u8>(), None)
+        } {
             Err(SurfaceCreationError::MissingExtension { .. }) => (),
             _ => panic!(),
         }
@@ -771,7 +808,7 @@ mod tests {
     #[test]
     fn khr_mir_surface_ext_missing() {
         let instance = instance!();
-        match unsafe { Surface::from_mir(instance, ptr::null::<u8>(), ptr::null::<u8>()) } {
+        match unsafe { Surface::from_mir(instance, ptr::null::<u8>(), ptr::null::<u8>(), None) } {
             Err(SurfaceCreationError::MissingExtension { .. }) => (),
             _ => panic!(),
         }
@@ -780,7 +817,7 @@ mod tests {
     #[test]
     fn khr_android_surface_ext_missing() {
         let instance = instance!();
-        match unsafe { Surface::from_anativewindow(instance, ptr::null::<u8>()) } {
+        match unsafe { Surface::from_anativewindow(instance, ptr::null::<u8>(), None) } {
             Err(SurfaceCreationError::MissingExtension { .. }) => (),
             _ => panic!(),
         }

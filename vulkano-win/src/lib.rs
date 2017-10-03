@@ -10,6 +10,7 @@ extern crate metal_rs as metal;
 
 use std::error;
 use std::fmt;
+use std::ops::Deref;
 #[cfg(target_os = "windows")]
 use std::ptr;
 use std::sync::Arc;
@@ -18,6 +19,7 @@ use vulkano::instance::Instance;
 use vulkano::instance::InstanceExtensions;
 use vulkano::swapchain::Surface;
 use vulkano::swapchain::SurfaceCreationError;
+use vulkano::swapchain::WindowAbstract;
 use winit::{EventsLoop, WindowBuilder};
 use winit::CreationError as WindowCreationError;
 
@@ -61,8 +63,9 @@ pub trait VkSurfaceBuild {
 impl VkSurfaceBuild for WindowBuilder {
     fn build_vk_surface(self, events_loop: &EventsLoop, instance: Arc<Instance>)
                         -> Result<Window, CreationError> {
-        let window = self.build(events_loop)?;
-        let surface = unsafe { winit_to_surface(instance, &window) }?;
+        let underlying_window = self.build(events_loop)?;
+        let window = Arc::new(WinitWindow(underlying_window));
+        let surface = unsafe { winit_to_surface(instance, window.clone()) }?;
 
         Ok(Window {
                window: window,
@@ -71,8 +74,21 @@ impl VkSurfaceBuild for WindowBuilder {
     }
 }
 
+pub struct WinitWindow(winit::Window);
+
+impl WindowAbstract for WinitWindow {
+}
+
+impl Deref for WinitWindow {
+    type Target = winit::Window;
+
+    fn deref(&self) -> &winit::Window {
+        &self.0
+    }
+}
+
 pub struct Window {
-    window: winit::Window,
+    window: Arc<WinitWindow>,
     surface: Arc<Surface>,
 }
 
@@ -137,45 +153,51 @@ impl From<WindowCreationError> for CreationError {
 }
 
 #[cfg(target_os = "android")]
-unsafe fn winit_to_surface(instance: Arc<Instance>, win: &winit::Window)
+unsafe fn winit_to_surface(instance: Arc<Instance>, win: Arc<WinitWindow>)
                            -> Result<Arc<Surface>, SurfaceCreationError> {
     use winit::os::android::WindowExt;
-    Surface::from_anativewindow(instance, win.get_native_window())
+    Surface::from_anativewindow(instance, win.get_native_window(), Some(win))
 }
 
 #[cfg(all(unix, not(target_os = "android"), not(target_os = "macos")))]
-unsafe fn winit_to_surface(instance: Arc<Instance>, win: &winit::Window)
+unsafe fn winit_to_surface(instance: Arc<Instance>, win: Arc<WinitWindow>)
                            -> Result<Arc<Surface>, SurfaceCreationError> {
     use winit::os::unix::WindowExt;
     match (win.get_wayland_display(), win.get_wayland_surface()) {
-        (Some(display), Some(surface)) => Surface::from_wayland(instance, display, surface),
+        (Some(display), Some(surface)) => Surface::from_wayland(instance,
+                                                                display,
+                                                                surface,
+                                                                Some(win)),
         _ => {
             // No wayland display found, check if we can use xlib.
             // If not, we use xcb.
             if instance.loaded_extensions().khr_xlib_surface {
                 Surface::from_xlib(instance,
                                    win.get_xlib_display().unwrap(),
-                                   win.get_xlib_window().unwrap() as _)
+                                   win.get_xlib_window().unwrap() as _,
+                                   Some(win))
             } else {
                 Surface::from_xcb(instance,
                                   win.get_xcb_connection().unwrap(),
-                                  win.get_xlib_window().unwrap() as _)
+                                  win.get_xlib_window().unwrap() as _,
+                                  Some(win))
             }
         },
     }
 }
 
 #[cfg(target_os = "windows")]
-unsafe fn winit_to_surface(instance: Arc<Instance>, win: &winit::Window)
+unsafe fn winit_to_surface(instance: Arc<Instance>, win: Arc<WinitWindow>)
                            -> Result<Arc<Surface>, SurfaceCreationError> {
     use winit::os::windows::WindowExt;
     Surface::from_hwnd(instance,
                        ptr::null() as *const (), // FIXME
-                       win.get_hwnd())
+                       win.get_hwnd(),
+                       Some(win))
 }
 
 #[cfg(target_os = "macos")]
-unsafe fn winit_to_surface(instance: Arc<Instance>, win: &winit::Window)
+unsafe fn winit_to_surface(instance: Arc<Instance>, win: Arc<WinitWindow>)
                            -> Result<Arc<Surface>, SurfaceCreationError> {
     use winit::os::macos::WindowExt;
 
@@ -193,5 +215,5 @@ unsafe fn winit_to_surface(instance: Arc<Instance>, win: &winit::Window)
     view.setLayer(mem::transmute(layer.0)); // Bombs here with out of memory
     view.setWantsLayer(YES);
 
-    Surface::from_macos_moltenvk(instance, win.get_nsview() as *const ())
+    Surface::from_macos_moltenvk(instance, win.get_nsview() as *const (), Some(win))
 }
