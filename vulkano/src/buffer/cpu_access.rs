@@ -98,9 +98,21 @@ impl<T> CpuAccessibleBuffer<T> {
                      -> Result<Arc<CpuAccessibleBuffer<T>>, DeviceMemoryAllocError>
         where T: Content + 'static
     {
+        let pool = Device::standard_pool(&device);
+        CpuAccessibleBuffer::from_data_with_pool(device, usage, data, &pool)
+    }
+
+    /// Builds a new buffer with an allocation from a specified
+    /// pool. Only allowed for sized data.
+    pub fn from_data_with_pool<P>(
+        device: Arc<Device>, usage: BufferUsage, data: T, pool: &P)
+        -> Result<Arc<CpuAccessibleBuffer<T, PotentialDedicatedAllocation<P::Alloc>>>, DeviceMemoryAllocError>
+        where P: MemoryPool,
+              T: Content + 'static
+    {
         unsafe {
             let uninitialized =
-                CpuAccessibleBuffer::raw(device, mem::size_of::<T>(), usage, iter::empty())?;
+                CpuAccessibleBuffer::raw(device, mem::size_of::<T>(), usage, iter::empty(), pool)?;
 
             // Note that we are in panic-unsafety land here. However a panic should never ever
             // happen here, so in theory we are safe.
@@ -113,13 +125,26 @@ impl<T> CpuAccessibleBuffer<T> {
 
             Ok(uninitialized)
         }
+
     }
 
     /// Builds a new uninitialized buffer. Only allowed for sized data.
     #[inline]
     pub unsafe fn uninitialized(device: Arc<Device>, usage: BufferUsage)
                                 -> Result<Arc<CpuAccessibleBuffer<T>>, DeviceMemoryAllocError> {
-        CpuAccessibleBuffer::raw(device, mem::size_of::<T>(), usage, iter::empty())
+        let pool = Device::standard_pool(&device);
+        CpuAccessibleBuffer::raw(device, mem::size_of::<T>(), usage, iter::empty(), &pool)
+    }
+
+    /// Builds a new uninitialized buffer from the specified
+    /// pool. Only allowed for sized data.
+    #[inline]
+    pub unsafe fn uninitialized_with_pool<P>(
+        device: Arc<Device>, usage: BufferUsage, pool: &P)
+        -> Result<Arc<CpuAccessibleBuffer<T, PotentialDedicatedAllocation<P::Alloc>>>, DeviceMemoryAllocError>
+        where P: MemoryPool
+    {
+        CpuAccessibleBuffer::raw(device, mem::size_of::<T>(), usage, iter::empty(), pool)
     }
 }
 
@@ -131,9 +156,24 @@ impl<T> CpuAccessibleBuffer<[T]> {
         where I: ExactSizeIterator<Item = T>,
               T: Content + 'static
     {
+        let pool = Device::standard_pool(&device);
+        CpuAccessibleBuffer::from_iter_with_pool(device, usage, data, &pool)
+    }
+
+    /// Builds anew buffer that contains an array of `T` from the
+    /// specified pool. The initial data comes from an iterator that
+    /// produces that list of Ts
+    pub fn from_iter_with_pool<I, P> (device: Arc<Device>, usage: BufferUsage, data: I, pool: &P)
+                        -> Result<Arc<CpuAccessibleBuffer<[T], PotentialDedicatedAllocation<P::Alloc>>>, DeviceMemoryAllocError>
+        where I: ExactSizeIterator<Item = T>,
+              P: MemoryPool,
+              T: Content + 'static
+    {
         unsafe {
-            let uninitialized =
-                CpuAccessibleBuffer::uninitialized_array(device, data.len(), usage)?;
+            let uninitialized = CpuAccessibleBuffer::uninitialized_array_with_pool(device,
+                                                                                   data.len(),
+                                                                                   usage,
+                                                                                   pool)?;
 
             // Note that we are in panic-unsafety land here. However a panic should never ever
             // happen here, so in theory we are safe.
@@ -156,7 +196,21 @@ impl<T> CpuAccessibleBuffer<[T]> {
     pub unsafe fn uninitialized_array(
         device: Arc<Device>, len: usize, usage: BufferUsage)
         -> Result<Arc<CpuAccessibleBuffer<[T]>>, DeviceMemoryAllocError> {
-        CpuAccessibleBuffer::raw(device, len * mem::size_of::<T>(), usage, iter::empty())
+        let pool = Device::standard_pool(&device);
+        CpuAccessibleBuffer::uninitialized_array_with_pool(device, len, usage, &pool)
+    }
+
+    /// Builds a new buffer from the specified pool. Can be used for arrays.
+    pub unsafe fn uninitialized_array_with_pool<P>(
+        device: Arc<Device>, len: usize, usage: BufferUsage, pool: &P)
+        -> Result<Arc<CpuAccessibleBuffer<[T], PotentialDedicatedAllocation<P::Alloc>>>, DeviceMemoryAllocError>
+        where P: MemoryPool
+    {
+        CpuAccessibleBuffer::raw(device,
+                                 len * mem::size_of::<T>(),
+                                 usage,
+                                 iter::empty(),
+                                 pool)
     }
 }
 
@@ -167,10 +221,11 @@ impl<T: ?Sized> CpuAccessibleBuffer<T> {
     ///
     /// You must ensure that the size that you pass is correct for `T`.
     ///
-    pub unsafe fn raw<'a, I>(device: Arc<Device>, size: usize, usage: BufferUsage,
-                             queue_families: I)
-                             -> Result<Arc<CpuAccessibleBuffer<T>>, DeviceMemoryAllocError>
-        where I: IntoIterator<Item = QueueFamily<'a>>
+    pub unsafe fn raw<'a, I, P>(device: Arc<Device>, size: usize, usage: BufferUsage,
+                                queue_families: I, pool: &P)
+                                -> Result<Arc<CpuAccessibleBuffer<T, PotentialDedicatedAllocation<P::Alloc>>>, DeviceMemoryAllocError>
+        where I: IntoIterator<Item = QueueFamily<'a>>,
+              P: MemoryPool
     {
         let queue_families = queue_families
             .into_iter()
@@ -192,7 +247,7 @@ impl<T: ?Sized> CpuAccessibleBuffer<T> {
             }
         };
 
-        let mem = MemoryPool::alloc_from_requirements(&Device::standard_pool(&device),
+        let mem = MemoryPool::alloc_from_requirements(pool,
                                     &mem_reqs,
                                     AllocLayout::Linear,
                                     MappingRequirement::Map,
